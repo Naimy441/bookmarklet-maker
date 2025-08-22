@@ -64,8 +64,11 @@
         var cols = Math.floor(window.innerWidth / gridSize);
         var totalCells = rows * cols;
         var dotPositions = [];
+        
+        // Reserve space for UI (80px from top)
+        var uiHeightInGrids = Math.ceil(80 / gridSize);
 
-        for (var i = 0; i < rows; i++) {
+        for (var i = uiHeightInGrids; i < rows; i++) {  // Start after UI height
             for (var j = 0; j < cols; j++) {
                 if (Math.abs(j - 5) > 2 || Math.abs(i - 5) > 2) {
                     dotPositions.push({ x: j, y: i });
@@ -100,7 +103,18 @@
 
         dots.forEach(function (dot, index) {
             if (!dot.parentNode) return;
-            if (dot.gridX === pacmanGridX && dot.gridY === pacmanGridY) {
+            
+            // Calculate actual pixel distance between Pac-Man and dot centers
+            var dotX = dot.gridX * gridSize + gridSize / 2;
+            var dotY = dot.gridY * gridSize + gridSize / 2;
+            var dx = dotX - pacmanX;
+            var dy = dotY - pacmanY;
+            var distance = Math.sqrt(dx * dx + dy * dy);
+            
+            // Collection radius (more forgiving than the visual size of the dot)
+            var collectionRadius = 25; // Generous radius for easier collection
+            
+            if (distance < collectionRadius) {
                 dot.remove();
                 dots.splice(index, 1);
                 score++;
@@ -115,7 +129,15 @@
         });
 
         ghosts.forEach(function (ghost) {
-            if (Math.abs(ghost.gridX - pacmanGridX) <= 0 && Math.abs(ghost.gridY - pacmanGridY) <= 0) {
+            // Calculate actual pixel distance between Pac-Man and ghost centers
+            var dx = ghost.x - pacmanX;
+            var dy = ghost.y - pacmanY;
+            var distance = Math.sqrt(dx * dx + dy * dy);
+            
+            // Collision radius (slightly smaller than sprite size for fair gameplay)
+            var collisionRadius = 15; // Sprites are 40x40, using smaller radius for precise collisions
+            
+            if (distance < collisionRadius * 2) { // Multiply by 2 since we're checking distance between centers
                 if (!gameOver) {
                     gameOver = true;
                     setTimeout(function () {
@@ -140,14 +162,39 @@
         var targetX = pacmanGridX;
         var targetY = pacmanGridY;
 
-        if (Math.abs(dx) > Math.abs(dy)) {
-            targetX = pacmanGridX + (dx > 0 ? 1 : -1);
-        } else if (Math.abs(dy) > 0) {
-            targetY = pacmanGridY + (dy > 0 ? 1 : -1);
+        // Calculate distances for possible moves
+        var possibleMoves = [];
+        
+        // Add horizontal move if possible
+        if (dx !== 0) {
+            var horizontalMove = {
+                x: pacmanGridX + (dx > 0 ? 1 : -1),
+                y: pacmanGridY
+            };
+            if (horizontalMove.x >= 0 && horizontalMove.x < maxCols) {
+                var horizontalDist = Math.pow(horizontalMove.x - mouseGridX, 2) + Math.pow(horizontalMove.y - mouseGridY, 2);
+                possibleMoves.push({ move: horizontalMove, dist: horizontalDist });
+            }
         }
-
-        targetX = Math.max(0, Math.min(targetX, maxCols - 1));
-        targetY = Math.max(0, Math.min(targetY, maxRows - 1));
+        
+        // Add vertical move if possible
+        if (dy !== 0) {
+            var verticalMove = {
+                x: pacmanGridX,
+                y: pacmanGridY + (dy > 0 ? 1 : -1)
+            };
+            if (verticalMove.y >= 0 && verticalMove.y < maxRows) {
+                var verticalDist = Math.pow(verticalMove.x - mouseGridX, 2) + Math.pow(verticalMove.y - mouseGridY, 2);
+                possibleMoves.push({ move: verticalMove, dist: verticalDist });
+            }
+        }
+        
+        // Choose the move that minimizes distance
+        if (possibleMoves.length > 0) {
+            var bestMove = possibleMoves.reduce((a, b) => a.dist < b.dist ? a : b);
+            targetX = bestMove.move.x;
+            targetY = bestMove.move.y;
+        }
 
         return { x: targetX, y: targetY };
     }
@@ -325,22 +372,40 @@
         mouseY = e.clientY;
     };
 
+    // Create UI container
+    var uiContainer = document.createElement('div');
+    uiContainer.style.cssText = 'position:fixed;top:0;left:0;right:0;padding:20px;display:flex;justify-content:space-between;align-items:center;z-index:1000000;background:linear-gradient(180deg,rgba(0,0,0,0.8) 0%,rgba(0,0,0,0) 100%);font-family:"Segoe UI",Arial,sans-serif;';
+    document.body.appendChild(uiContainer);
+    window.pacmanUI.push(uiContainer);
+
+    // Left section - Score
+    var scoreSection = document.createElement('div');
+    scoreSection.style.cssText = 'display:flex;align-items:center;gap:15px;';
+    
     scoreDisplay = document.createElement('div');
     scoreDisplay.textContent = 'Score: 0/100';
-    scoreDisplay.style.cssText = 'position:fixed;top:20px;right:20px;background:rgba(0,0,0,0.9);color:#ffff00;padding:12px 18px;border-radius:12px;font-family:Arial,sans-serif;font-weight:bold;font-size:20px;z-index:1000000;border:2px solid #ffff00;';
-    document.body.appendChild(scoreDisplay);
-    window.pacmanUI.push(scoreDisplay);
+    scoreDisplay.style.cssText = 'color:#ffff00;font-size:24px;font-weight:600;text-shadow:0 2px 4px rgba(0,0,0,0.5);padding:10px 20px;background:rgba(0,0,0,0.6);border-radius:15px;backdrop-filter:blur(5px);border:2px solid rgba(255,255,0,0.3);transition:all 0.3s ease;';
+    scoreSection.appendChild(scoreDisplay);
+    uiContainer.appendChild(scoreSection);
 
-    restartBtn = document.createElement('button');
-    restartBtn.textContent = '🔄 Restart';
-    restartBtn.style.cssText = 'position:fixed;top:20px;right:180px;background:linear-gradient(45deg,#ff6b35,#f7931e);color:white;padding:12px 18px;border:none;border-radius:12px;font-family:Arial,sans-serif;font-weight:bold;font-size:16px;z-index:1000000;cursor:pointer;border:2px solid #fff;';
-    restartBtn.onclick = restartGame;
-    document.body.appendChild(restartBtn);
-    window.pacmanUI.push(restartBtn);
-
+    // Center section - Instructions
     instructions = document.createElement('div');
-    instructions.innerHTML = '🟡 Collect all 100 dots! Avoid the ghosts! 👻<br>Move your mouse to control Pac-Man';
-    instructions.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:linear-gradient(45deg,#800080,#ff1493);color:#ffff00;padding:12px 24px;border-radius:15px;font-family:Arial,sans-serif;font-weight:bold;z-index:1000000;animation:fadeOut 6s ease-out forwards;border:2px solid #ffff00;text-align:center;';
+    instructions.innerHTML = '🎮 Move mouse to control Pac-Man<br>🟡 Collect dots • 👻 Avoid ghosts';
+    instructions.style.cssText = 'color:#fff;font-size:18px;font-weight:500;text-align:center;line-height:1.5;text-shadow:0 2px 4px rgba(0,0,0,0.5);padding:10px 25px;background:rgba(0,0,0,0.6);border-radius:15px;backdrop-filter:blur(5px);animation:fadeOut 6s ease-out forwards;border:2px solid rgba(255,255,255,0.3);';
+    uiContainer.appendChild(instructions);
+
+    // Right section - Restart button
+    var buttonSection = document.createElement('div');
+    buttonSection.style.cssText = 'display:flex;align-items:center;gap:15px;';
+    
+    restartBtn = document.createElement('button');
+    restartBtn.innerHTML = '🔄 New Game';
+    restartBtn.style.cssText = 'color:#fff;font-size:18px;font-weight:600;padding:12px 24px;background:linear-gradient(135deg,#4a90e2,#2ecc71);border:none;border-radius:15px;cursor:pointer;transition:all 0.3s ease;text-shadow:0 1px 2px rgba(0,0,0,0.3);box-shadow:0 4px 15px rgba(0,0,0,0.2);';
+    restartBtn.onmouseover = function() { this.style.transform = 'translateY(-2px)'; this.style.boxShadow = '0 6px 20px rgba(0,0,0,0.3)'; };
+    restartBtn.onmouseout = function() { this.style.transform = 'translateY(0)'; this.style.boxShadow = '0 4px 15px rgba(0,0,0,0.2)'; };
+    restartBtn.onclick = restartGame;
+    buttonSection.appendChild(restartBtn);
+    uiContainer.appendChild(buttonSection);
     document.body.appendChild(instructions);
     window.pacmanUI.push(instructions);
 
